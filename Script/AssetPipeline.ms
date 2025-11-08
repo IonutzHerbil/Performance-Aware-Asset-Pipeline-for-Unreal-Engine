@@ -16,6 +16,17 @@ struct AssetPipeline (
         if exportPath != undefined then (
             select obj
             exportFile exportPath #noPrompt selectedOnly:true using:FBXEXP
+            
+            local jsonPath = (substituteString exportPath ".fbx" ".json")
+            local jsonFile = createFile jsonPath
+            format "{\n" to:jsonFile
+            format "  \"asset\": \"%\",\n" obj.name to:jsonFile
+            format "  \"polygons\": %,\n" geoData[1] to:jsonFile
+            format "  \"vertices\": %,\n" geoData[2] to:jsonFile
+            format "  \"complexity\": \"%\",\n" perfData[2] to:jsonFile
+            format "  \"estimated_objects\": %\n" perfData[1] to:jsonFile
+            format "}" to:jsonFile
+            close jsonFile
         )
         
         local report = "ASSET ANALYSIS\n"
