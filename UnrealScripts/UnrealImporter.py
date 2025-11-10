@@ -1,5 +1,6 @@
 import json
 import os
+import unreal
 
 print("=== ASSET PIPELINE IMPORTER ===")
 
@@ -18,6 +19,14 @@ def import_asset_with_metadata(fbx_path):
     with open(json_path, 'r') as f:
         metadata = json.load(f)
     
+    import_task = unreal.AssetImportTask()
+    import_task.set_editor_property('automated', True)
+    import_task.set_editor_property('destination_path', '/Game/ImportedAssets')
+    import_task.set_editor_property('filename', fbx_path)
+    import_task.set_editor_property('save', True)
+
+    unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([import_task])
+
     print("ASSET IMPORTED")
     print("==============")
     print(f"Asset: {metadata['asset']}")
