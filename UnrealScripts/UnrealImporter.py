@@ -63,5 +63,5 @@ def import_asset_with_metadata(fbx_path):
         else:
             print("VALIDATION FAILED!")
 
-test_path = "D:/Puoli/An3 Sem1 - UL/Graphics/exports/test1_plus_json.fbx"
+test_path = "D:/Puoli/An3 Sem1 - UL/Graphics/exports/test2FixSmoothingGroupsWarning.fbx"
 import_asset_with_metadata(test_path)

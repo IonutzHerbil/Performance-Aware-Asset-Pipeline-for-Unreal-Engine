@@ -15,24 +15,35 @@ struct AssetPipeline (
         local exportPath = getSaveFileName caption:"Export FBX" types:"FBX Files (*.fbx)|*.fbx"
         if exportPath != undefined then (
             select obj
+            
+            FBXExporterSetParam "SmoothingGroups" true
+            FBXExporterSetParam "TangentSpaceExport" true
+            FBXExporterSetParam "SmoothMeshExport" true
+            
             exportFile exportPath #noPrompt selectedOnly:true using:FBXEXP
             
             local jsonPath = (substituteString exportPath ".fbx" ".json")
             local jsonFile = createFile jsonPath
-            format "{\n" to:jsonFile
-            format "  \"asset\": \"%\",\n" obj.name to:jsonFile
-            format "  \"polygons\": %,\n" geoData[1] to:jsonFile
-            format "  \"vertices\": %,\n" geoData[2] to:jsonFile
-            format "  \"complexity\": \"%\",\n" perfData[2] to:jsonFile
-            format "  \"estimated_objects\": %\n" perfData[1] to:jsonFile
+            
+            format "{" to:jsonFile
+            format "\"asset\":\"%\"," obj.name to:jsonFile
+            format "\"polygons\":%," geoData[1] to:jsonFile
+            format "\"vertices\":%," geoData[2] to:jsonFile
+            format "\"complexity\":\"%\"," perfData[2] to:jsonFile
+            format "\"estimated_objects\":%"  perfData[1] to:jsonFile
             format "}" to:jsonFile
+            
             close jsonFile
+            
+            format "Exported: %\n" exportPath
+            format "Metadata: %\n" jsonPath
         )
         
         local report = "ASSET ANALYSIS\n"
         report += "==============\n"
         report += "Object: " + obj.name + "\n"
         report += "Polygons: " + (geoData[1] as string) + "\n"
+        report += "Vertices: " + (geoData[2] as string) + "\n"
         report += "Est. Objects: " + (perfData[1] as string) + "\n"
         report += "Complexity: " + perfData[2] + "\n"
         
