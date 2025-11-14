@@ -1,5 +1,6 @@
 filein "Core/GeometryAnalyzer.ms"
 filein "Core/PerformancePredictor.ms"
+filein "Core/MaterialAnalyzer.ms"
 
 struct AssetPipeline (
     fn runAnalysis = (
@@ -11,6 +12,7 @@ struct AssetPipeline (
         local obj = selection[1]
         local geoData = geoAnalyzer.analyze obj
         local perfData = perfPredictor.predict geoData
+        local matData = matAnalyzer.analyze obj
         
         local exportPath = getSaveFileName caption:"Export FBX" types:"FBX Files (*.fbx)|*.fbx"
         if exportPath != undefined then (
@@ -29,6 +31,11 @@ struct AssetPipeline (
             format "\"asset\":\"%\"," obj.name to:jsonFile
             format "\"polygons\":%," geoData[1] to:jsonFile
             format "\"vertices\":%," geoData[2] to:jsonFile
+            format "\"texture_count\":%," matData[1] to:jsonFile
+            format "\"material\":\"%\"," matData[2] to:jsonFile
+            format "\"has_diffuse\":%," (if matData[3] then "true" else "false") to:jsonFile
+            format "\"has_normal\":%," (if matData[4] then "true" else "false") to:jsonFile
+            format "\"has_specular\":%," (if matData[5] then "true" else "false") to:jsonFile
             format "\"complexity\":\"%\"," perfData[2] to:jsonFile
             format "\"estimated_objects\":%"  perfData[1] to:jsonFile
             format "}" to:jsonFile
@@ -44,6 +51,8 @@ struct AssetPipeline (
         report += "Object: " + obj.name + "\n"
         report += "Polygons: " + (geoData[1] as string) + "\n"
         report += "Vertices: " + (geoData[2] as string) + "\n"
+        report += "Material: " + matData[2] + "\n"
+        report += "Textures: " + (matData[1] as string) + "\n"
         report += "Est. Objects: " + (perfData[1] as string) + "\n"
         report += "Complexity: " + perfData[2] + "\n"
         

@@ -1,4 +1,4 @@
-import unreal
+import unreal #type:ignore
 
 class PerformanceMeasurer:
     def __init__(self):
