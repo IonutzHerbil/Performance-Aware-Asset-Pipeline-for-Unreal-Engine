@@ -2,10 +2,17 @@ import json
 import os
 import sys
 import unreal #type:ignore
+import importlib
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+core_path = os.path.join(os.path.dirname(__file__), 'Core')
+if core_path not in sys.path:
+    sys.path.insert(0, core_path)
 
-from Core import PerformanceMeasurer, ValidationEngine
+import PerformanceMeasurer #type:ignore
+import ValidationEngine #type:ignore
+
+importlib.reload(PerformanceMeasurer)
+importlib.reload(ValidationEngine)
 
 print("=== ASSET PIPELINE IMPORTER ===")
 
@@ -38,10 +45,12 @@ def import_asset_with_metadata(fbx_path):
     print(f"Asset: {metadata['asset']}")
     print(f"Predicted Polygons: {metadata['polygons']}")
     print(f"Predicted Complexity: {metadata['complexity']}")
+    print(f"Material: {metadata.get('material', 'Unknown')}")
+    print(f"Textures: {metadata.get('texture_count', 0)}")
     print(f"Est. Objects: {metadata['estimated_objects']}")
     
-    measurer = PerformanceMeasurer()
-    validator = ValidationEngine()
+    measurer = PerformanceMeasurer.PerformanceMeasurer()
+    validator = ValidationEngine.ValidationEngine()
     
     asset_name = os.path.splitext(os.path.basename(fbx_path))[0]
     asset_path = f"/Game/ImportedAssets/{asset_name}"
@@ -63,5 +72,5 @@ def import_asset_with_metadata(fbx_path):
         else:
             print("VALIDATION FAILED!")
 
-test_path = "D:/Puoli/An3 Sem1 - UL/Graphics/exports/test2FixSmoothingGroupsWarning.fbx"
+test_path = "D:/Puoli/An3 Sem1 - UL/Graphics/exports/test3MaterialAnalizer.fbx"
 import_asset_with_metadata(test_path)
