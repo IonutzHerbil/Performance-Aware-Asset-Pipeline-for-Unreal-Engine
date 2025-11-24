@@ -1,4 +1,3 @@
--- File Monitor for Pipeline Commands
 global pipelineMonitorTimer = undefined
 global commandFile = "D:/Puoli/An3 Sem1 - UL/Graphics/Pipeline-for-Unreal-Engine/temp/command.ms"
 global resultFile = "D:/Puoli/An3 Sem1 - UL/Graphics/Pipeline-for-Unreal-Engine/temp/result.txt"
@@ -6,10 +5,8 @@ global resultFile = "D:/Puoli/An3 Sem1 - UL/Graphics/Pipeline-for-Unreal-Engine/
 fn checkForCommands = (
     if doesFileExist commandFile then (
         try (
-            -- Execute the command file
             local result = fileIn commandFile
             
-            -- Write result
             local f = createFile resultFile
             if result != undefined then (
                 format "%\n" (result as string) to:f
@@ -18,7 +15,6 @@ fn checkForCommands = (
             )
             close f
             
-            -- Delete command file
             deleteFile commandFile
             
         ) catch (
@@ -30,7 +26,6 @@ fn checkForCommands = (
     )
 )
 
--- Setup timer
 if pipelineMonitorTimer != undefined then (
     stopTimer pipelineMonitorTimer
 )
