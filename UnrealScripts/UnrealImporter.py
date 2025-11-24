@@ -8,8 +8,8 @@ core_path = os.path.join(os.path.dirname(__file__), 'Core')
 if core_path not in sys.path:
     sys.path.insert(0, core_path)
 
-import PerformanceMeasurer #type:ignore
-import ValidationEngine #type:ignore
+import PerformanceMeasurer#type:ignore
+import ValidationEngine#type:ignore
 
 importlib.reload(PerformanceMeasurer)
 importlib.reload(ValidationEngine)
