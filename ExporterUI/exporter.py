@@ -1,6 +1,4 @@
 import json
-import os
-
 
 class Exporter:
     def create_metadata(self, object_name, stats, export_path):
@@ -11,9 +9,8 @@ class Exporter:
             'asset_name': object_name,
             'export_path': export_path,
             'geometry': {
-                'polygons': polygons,
-                'vertices': vertices,
-                'triangles': polygons
+                'polygons': polygons, 
+                'vertices': vertices
             },
         }
 

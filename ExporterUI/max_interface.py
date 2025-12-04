@@ -64,9 +64,11 @@ class MaxScriptInterface:
         (
             local obj = getNodeByName "{object_name}"
             if obj != undefined then (
-                local counts = getPolygonCount obj
-                -- counts is array: #(numFaces, numVerts)
-                counts[1] as string + "," + counts[2] as string
+                local tmesh = snapshotAsMesh obj
+                local tris = tmesh.numFaces -- numFaces on a mesh is ALWAYS triangles
+                local verts = tmesh.numVerts
+                delete tmesh -- Clean up memory
+                (tris as string) + "," + (verts as string)
             ) else "ERROR_NOT_FOUND"
         )
         """
@@ -76,10 +78,7 @@ class MaxScriptInterface:
 
         if "ERROR" in response: 
             raise Exception(f"Object '{object_name}' not found")
-        
-        if "," not in response:
-            print(f"[WARNING] Bad stats response for {object_name}. Defaulting to 0.")
-            return {'polygons': 0, 'vertices': 0}
+        if "," not in response: return {'polygons': 0, 'vertices': 0}
 
         try:
             p, v = response.split(',')
@@ -95,7 +94,9 @@ class MaxScriptInterface:
             local obj = getNodeByName "{object_name}"
             if obj != undefined then (
                 select obj
-                -- FBX Settings could be injected here if needed
+                FBXExporterSetParam "SmoothingGroups" true
+                FBXExporterSetParam "Triangulate" true
+                FBXExporterSetParam "Preserveedgeorientation" true
                 exportFile "{path}" #noPrompt selectedOnly:true using:FBXEXP
                 "SUCCESS"
             ) else "ERROR"
