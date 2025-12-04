@@ -1,48 +1,39 @@
-global pipelineTempDir = sysInfo.tempdir + "3dsMaxPipeline\\"
-makeDir pipelineTempDir
+try(PipelineMonitor.Stop())catch()
+global PipelineMonitor = undefined
+gc()
+global pipeDir = (sysInfo.tempdir + "3dsMaxPipeline\\")
+global cmdFile = pipeDir + "command.ms"
+global resFile = pipeDir + "result.txt"
 
-cmdFile = pipelineTempDir + "command.ms"
-resultFile = pipelineTempDir + "result.txt"
+makeDir pipeDir all:true
 
-print "--- PIPELINE MONITOR STARTED ---"
-print ("Listening at: " + pipelineTempDir)
-
-fn checkForCommand = (
-    if doesFileExist cmdFile do (
+global CheckPipe
+fn CheckPipe source args = (
+    if (dotNetClass "System.IO.File").Exists cmdFile do (
         try (
-            local f = openFile cmdFile
-            local cmd = ""
-            while not eof f do cmd += readLine f
-            close f
-            
+            local content = (dotNetClass "System.IO.File").ReadAllText cmdFile
             deleteFile cmdFile
             
-            print ("Executing: " + cmd)
+            local result = execute content
             
-            local result = ""
-            try (
-                result = (execute cmd) as string
-            ) catch (
-                result = "ERROR: " + (getCurrentException())
-            )
+            if result == undefined then result = "OK"
+            (dotNetClass "System.IO.File").WriteAllText resFile (result as string)
             
-            local out = createFile resultFile
-            format "%" result to:out
-            close out
-            
-            print ("Result Sent.")
-            
-        ) catch (
+            print ("Pipeline Executed: " + (substring content 1 (amin 50 content.count)))
+        )
+        catch (
+            local err = getCurrentException()
+            print ("Pipeline Error: " + err)
+            (dotNetClass "System.IO.File").WriteAllText resFile ("ERROR: " + err)
         )
     )
 )
 
+PipelineMonitor = dotNetObject "System.Windows.Forms.Timer"
+PipelineMonitor.Interval = 100
+dotnet.addEventHandler PipelineMonitor "Tick" CheckPipe
+PipelineMonitor.Start()
 
-try(pipelineTimer.Stop())catch() 
-
-pipelineTimer = dotNetObject "System.Windows.Forms.Timer"
-pipelineTimer.interval = 200 
-dotnet.addEventHandler pipelineTimer "tick" checkForCommand
-pipelineTimer.start()
-
-print "--- MONITOR RUNNING ---"
+clearListener()
+print "--- PIPELINE MONITOR READY ---"
+print ("Listening at: " + pipeDir)
