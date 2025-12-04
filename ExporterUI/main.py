@@ -3,7 +3,7 @@ import os
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QPushButton, QComboBox, 
                              QLineEdit, QTextEdit, QFileDialog, QMessageBox,
-                             QGroupBox, QTabWidget)
+                             QGroupBox, QTabWidget, QCheckBox) # Added QCheckBox
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 
@@ -14,24 +14,22 @@ import config
 
 class ExportWorker(QThread):
     finished = pyqtSignal(object, str) 
-    error = pyqtSignal(str)          
+    error = pyqtSignal(str)           
 
-    def __init__(self, interface, exporter, obj_name, path):
+    def __init__(self, interface, exporter, obj_name, path, do_lods):
         super().__init__()
         self.interface = interface
         self.exporter = exporter
         self.obj_name = obj_name
         self.path = path
-
+        self.do_lods = do_lods 
     def run(self):
         try:
             stats = self.interface.get_object_stats(self.obj_name)
             
-            self.interface.export_fbx(self.obj_name, self.path)
+            self.interface.export_fbx(self.obj_name, self.path, self.do_lods)
             
-            metadata, json_path = self.exporter.create_metadata(
-                self.obj_name, stats, self.path
-            )
+            json_path = self.path.replace('.fbx', '.json')
             
             self.finished.emit(stats, json_path)
         except Exception as e:
@@ -40,24 +38,21 @@ class ExportWorker(QThread):
 class PipelineUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        
         self.max_interface = MaxScriptInterface()
         self.exporter = Exporter()
         self.importer = UnrealImporter()
-        
         self.init_ui()
-        
         self.try_connect_to_max()
     
     def init_ui(self):
         self.setWindowTitle("3ds Max to Unreal Pipeline (Pro)")
-        self.setGeometry(100, 100, 900, 700)
+        self.setGeometry(100, 100, 900, 750)
         
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
         
-        title = QLabel("3ds Max → Unreal Engine Pipeline")
+        title = QLabel("3ds Max -> Unreal Engine Pipeline")
         title.setFont(QFont('Arial', 16, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(title)
@@ -87,30 +82,33 @@ class PipelineUI(QMainWindow):
         
         sel_group = QGroupBox("1. Select Object from Scene")
         sel_layout = QHBoxLayout()
-        
         self.obj_combo = QComboBox()
         self.obj_combo.setMinimumWidth(300)
-        
         self.refresh_btn = QPushButton("Refresh List")
         self.refresh_btn.clicked.connect(self.connect_to_max)
-        
         sel_layout.addWidget(QLabel("Object:"))
         sel_layout.addWidget(self.obj_combo)
         sel_layout.addWidget(self.refresh_btn)
         sel_group.setLayout(sel_layout)
         layout.addWidget(sel_group)
         
-        path_group = QGroupBox("2. Export Location")
-        path_layout = QHBoxLayout()
+        path_group = QGroupBox("2. Export Settings")
+        path_layout = QVBoxLayout() # Changed to Vertical to stack Checkbox
         
+        file_layout = QHBoxLayout()
         self.path_input = QLineEdit()
         self.path_input.setPlaceholderText("Select where to save the FBX...")
-        
         self.browse_btn = QPushButton("Browse...")
         self.browse_btn.clicked.connect(self.browse_export_path)
+        file_layout.addWidget(self.path_input)
+        file_layout.addWidget(self.browse_btn)
         
-        path_layout.addWidget(self.path_input)
-        path_layout.addWidget(self.browse_btn)
+        self.lod_checkbox = QCheckBox("Auto-Generate LODs (Levels of Detail)")
+        self.lod_checkbox.setChecked(True)
+        self.lod_checkbox.setStyleSheet("font-weight: bold; color: #0078d4;")
+        
+        path_layout.addLayout(file_layout)
+        path_layout.addWidget(self.lod_checkbox)
         path_group.setLayout(path_layout)
         layout.addWidget(path_group)
         
@@ -134,7 +132,6 @@ class PipelineUI(QMainWindow):
         
         info = QLabel("Select the exported FBX to generate the Unreal Python import script.")
         layout.addWidget(info)
-        
         self.fbx_input = QLineEdit()
         self.fbx_input.setPlaceholderText("Path to exported FBX...")
         layout.addWidget(self.fbx_input)
@@ -147,7 +144,6 @@ class PipelineUI(QMainWindow):
         """)
         self.gen_btn.clicked.connect(self.generate_script)
         layout.addWidget(self.gen_btn)
-        
         layout.addStretch()
         tabs.addTab(tab, "Import to Unreal")
 
@@ -186,6 +182,7 @@ class PipelineUI(QMainWindow):
     def export_asset(self):
         obj_name = self.obj_combo.currentText()
         export_path = self.path_input.text()
+        do_lods = self.lod_checkbox.isChecked() # Get Checkbox State
         
         if not obj_name:
             QMessageBox.warning(self, "Input Error", "Please select an object.")
@@ -195,10 +192,10 @@ class PipelineUI(QMainWindow):
             return
         
         self.export_btn.setEnabled(False)
-        self.export_btn.setText("EXPORTING... (PLEASE WAIT)")
+        self.export_btn.setText("EXPORTING... (Processing LODs...)")
         self.log(f"Starting export for '{obj_name}'...", "blue")
         
-        self.worker = ExportWorker(self.max_interface, self.exporter, obj_name, export_path)
+        self.worker = ExportWorker(self.max_interface, self.exporter, obj_name, export_path, do_lods)
         self.worker.finished.connect(self.on_export_done)
         self.worker.error.connect(self.on_export_fail)
         self.worker.start()
@@ -206,14 +203,10 @@ class PipelineUI(QMainWindow):
     def on_export_done(self, stats, json_path):
         self.export_btn.setEnabled(True)
         self.export_btn.setText("EXPORT ASSET")
-        
         self.log("Export Successful!", "green")
-        self.log(f"Polygons: {stats['polygons']}, Vertices: {stats['vertices']}", "black")
         self.log(f"Metadata saved: {json_path}", "black")
-        
         self.fbx_input.setText(self.path_input.text())
-        
-        QMessageBox.information(self, "Success", f"Asset exported successfully!\n\nPolygons: {stats['polygons']}")
+        QMessageBox.information(self, "Success", f"Asset exported successfully!")
 
     def on_export_fail(self, err_msg):
         self.export_btn.setEnabled(True)
@@ -226,12 +219,11 @@ class PipelineUI(QMainWindow):
         if not fbx_path or not os.path.exists(fbx_path):
             QMessageBox.warning(self, "Error", "FBX file not found.")
             return
-            
         try:
             script_path = self.importer.save_import_script(fbx_path)
             self.log(f"Unreal script generated: {script_path}", "green")
             QMessageBox.information(self, "Script Generated", 
-                f"Python script created successfully!\n\nLocation: {script_path}\n\nRun this script inside Unreal Engine's Python log.")
+                f"Python script created successfully!\n\nLocation: {script_path}\n\nRun this script inside Unreal Engine.")
         except Exception as e:
             self.log(f"Script generation failed: {e}", "red")
 
