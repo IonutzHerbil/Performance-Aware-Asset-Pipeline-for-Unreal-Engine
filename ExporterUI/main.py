@@ -3,197 +3,241 @@ import os
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QPushButton, QComboBox, 
                              QLineEdit, QTextEdit, QFileDialog, QMessageBox,
-                             QGroupBox)
-from PyQt5.QtCore import Qt
+                             QGroupBox, QTabWidget)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 
 from max_interface import MaxScriptInterface
 from exporter import Exporter
+from unreal_importer import UnrealImporter
 import config
 
+class ExportWorker(QThread):
+    finished = pyqtSignal(object, str) 
+    error = pyqtSignal(str)          
 
-class ExporterUI(QMainWindow):
+    def __init__(self, interface, exporter, obj_name, path):
+        super().__init__()
+        self.interface = interface
+        self.exporter = exporter
+        self.obj_name = obj_name
+        self.path = path
+
+    def run(self):
+        try:
+            stats = self.interface.get_object_stats(self.obj_name)
+            
+            self.interface.export_fbx(self.obj_name, self.path)
+            
+            metadata, json_path = self.exporter.create_metadata(
+                self.obj_name, stats, self.path
+            )
+            
+            self.finished.emit(stats, json_path)
+        except Exception as e:
+            self.error.emit(str(e))
+
+class PipelineUI(QMainWindow):
     def __init__(self):
         super().__init__()
+        
         self.max_interface = MaxScriptInterface()
         self.exporter = Exporter()
+        self.importer = UnrealImporter()
+        
         self.init_ui()
-        self.connect_to_max()
+        
+        self.try_connect_to_max()
     
     def init_ui(self):
-        self.setWindowTitle("3ds Max to Unreal - Exporter")
-        self.setGeometry(100, 100, 800, 600)
+        self.setWindowTitle("3ds Max to Unreal Pipeline (Pro)")
+        self.setGeometry(100, 100, 900, 700)
+        
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
-        layout = QVBoxLayout(main_widget)
-        layout.setSpacing(15)
-        title = QLabel("3ds Max Asset Exporter")
+        main_layout = QVBoxLayout(main_widget)
+        
+        title = QLabel("3ds Max → Unreal Engine Pipeline")
         title.setFont(QFont('Arial', 16, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
-        self.status_label = QLabel("Status: Not connected")
-        self.status_label.setStyleSheet("color: red; font-weight: bold;")
-        layout.addWidget(self.status_label)
-        obj_group = QGroupBox("1. Select Object")
-        obj_layout = QHBoxLayout()
-        self.obj_combo = QComboBox()
-        self.obj_combo.setMinimumWidth(400)
-        obj_layout.addWidget(QLabel("Object:"))
-        obj_layout.addWidget(self.obj_combo)
-        self.refresh_btn = QPushButton("Refresh")
-        self.refresh_btn.clicked.connect(self.refresh_objects)
-        obj_layout.addWidget(self.refresh_btn)
-        obj_group.setLayout(obj_layout)
-        layout.addWidget(obj_group)
-        export_group = QGroupBox("2. Export Location")
-        export_layout = QHBoxLayout()
-        self.path_input = QLineEdit()
-        self.path_input.setPlaceholderText("Select export path...")
-        export_layout.addWidget(self.path_input)
-        self.browse_btn = QPushButton("Browse...")
-        self.browse_btn.clicked.connect(self.browse_export_path)
-        export_layout.addWidget(self.browse_btn)
-        export_group.setLayout(export_layout)
-        layout.addWidget(export_group)
-        self.export_btn = QPushButton("EXPORT ASSET")
-        self.export_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #0078d4;
-                color: white;
-                font-size: 14pt;
-                font-weight: bold;
-                padding: 15px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #005a9e;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-            }
-        """)
-        self.export_btn.clicked.connect(self.export_asset)
-        self.export_btn.setEnabled(False)
-        layout.addWidget(self.export_btn)
-        results_group = QGroupBox("Export Results")
-        results_layout = QVBoxLayout()
-        self.results_text = QTextEdit()
-        self.results_text.setReadOnly(True)
-        self.results_text.setMaximumHeight(150)
-        results_layout.addWidget(self.results_text)
-        results_group.setLayout(results_layout)
-        layout.addWidget(results_group)
+        main_layout.addWidget(title)
+        
+        tabs = QTabWidget()
+        self.setup_export_tab(tabs)
+        self.setup_import_tab(tabs)
+        main_layout.addWidget(tabs)
+        
         console_group = QGroupBox("Console Log")
         console_layout = QVBoxLayout()
         self.console_text = QTextEdit()
         self.console_text.setReadOnly(True)
-        self.console_text.setMaximumHeight(150)
+        self.console_text.setMaximumHeight(120)
         console_layout.addWidget(self.console_text)
         console_group.setLayout(console_layout)
-        layout.addWidget(console_group)
-    
-    def log(self, message, color="black"):
-        self.console_text.append(f'<span style="color: {color};">{message}</span>')
-    
+        main_layout.addWidget(console_group)
+
+    def setup_export_tab(self, tabs):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(15)
+        
+        self.status_label = QLabel("Status: Checking...")
+        self.status_label.setFont(QFont('Arial', 10, QFont.Bold))
+        layout.addWidget(self.status_label)
+        
+        sel_group = QGroupBox("1. Select Object from Scene")
+        sel_layout = QHBoxLayout()
+        
+        self.obj_combo = QComboBox()
+        self.obj_combo.setMinimumWidth(300)
+        
+        self.refresh_btn = QPushButton("Refresh List")
+        self.refresh_btn.clicked.connect(self.connect_to_max)
+        
+        sel_layout.addWidget(QLabel("Object:"))
+        sel_layout.addWidget(self.obj_combo)
+        sel_layout.addWidget(self.refresh_btn)
+        sel_group.setLayout(sel_layout)
+        layout.addWidget(sel_group)
+        
+        path_group = QGroupBox("2. Export Location")
+        path_layout = QHBoxLayout()
+        
+        self.path_input = QLineEdit()
+        self.path_input.setPlaceholderText("Select where to save the FBX...")
+        
+        self.browse_btn = QPushButton("Browse...")
+        self.browse_btn.clicked.connect(self.browse_export_path)
+        
+        path_layout.addWidget(self.path_input)
+        path_layout.addWidget(self.browse_btn)
+        path_group.setLayout(path_layout)
+        layout.addWidget(path_group)
+        
+        self.export_btn = QPushButton("EXPORT ASSET")
+        self.export_btn.setMinimumHeight(50)
+        self.export_btn.setStyleSheet("""
+            QPushButton { background-color: #0078d4; color: white; font-weight: bold; font-size: 14px; border-radius: 5px; }
+            QPushButton:hover { background-color: #005a9e; }
+            QPushButton:disabled { background-color: #cccccc; }
+        """)
+        self.export_btn.clicked.connect(self.export_asset)
+        layout.addWidget(self.export_btn)
+        
+        layout.addStretch()
+        tabs.addTab(tab, "Export from Max")
+
+    def setup_import_tab(self, tabs):
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(15)
+        
+        info = QLabel("Select the exported FBX to generate the Unreal Python import script.")
+        layout.addWidget(info)
+        
+        self.fbx_input = QLineEdit()
+        self.fbx_input.setPlaceholderText("Path to exported FBX...")
+        layout.addWidget(self.fbx_input)
+        
+        self.gen_btn = QPushButton("GENERATE UNREAL IMPORT SCRIPT")
+        self.gen_btn.setMinimumHeight(50)
+        self.gen_btn.setStyleSheet("""
+            QPushButton { background-color: #28a745; color: white; font-weight: bold; font-size: 14px; border-radius: 5px; }
+            QPushButton:hover { background-color: #218838; }
+        """)
+        self.gen_btn.clicked.connect(self.generate_script)
+        layout.addWidget(self.gen_btn)
+        
+        layout.addStretch()
+        tabs.addTab(tab, "Import to Unreal")
+
+    def log(self, msg, color="black"):
+        self.console_text.append(f'<span style="color:{color}">{msg}</span>')
+
+    def try_connect_to_max(self):
+        self.log("Checking connection...", "gray")
+        if self.max_interface.test_connection():
+            self.status_label.setText("Status: Connected to 3ds Max")
+            self.status_label.setStyleSheet("color: green")
+            self.log("Connected to 3ds Max", "green")
+            self.load_objects()
+        else:
+            self.status_label.setText("Status: Not Connected (Is monitor.ms running?)")
+            self.status_label.setStyleSheet("color: red")
+            self.log("Connection failed. Make sure monitor.ms is running in Max.", "red")
+
     def connect_to_max(self):
-        self.log("Connecting to 3ds Max...", "blue")
-        try:
-            if self.max_interface.test_connection():
-                self.status_label.setText(f"Status: Connected (Port {config.MAX_LISTENER_PORT})")
-                self.status_label.setStyleSheet("color: green; font-weight: bold;")
-                self.log("Connected successfully", "green")
-                self.load_objects()
-            else:
-                raise Exception("Connection test failed")
-        except Exception as e:
-            self.status_label.setText("Status: Not connected")
-            self.status_label.setStyleSheet("color: red; font-weight: bold;")
-            self.log(f"Connection failed: {str(e)}", "red")
-            self.log("Make sure 3ds Max is open with listener running", "orange")
-    
+        self.try_connect_to_max()
+
     def load_objects(self):
         try:
-            objects = self.max_interface.get_scene_objects()
+            objs = self.max_interface.get_scene_objects()
             self.obj_combo.clear()
-            self.obj_combo.addItems(objects)
-            self.log(f"Loaded {len(objects)} objects from scene", "blue")
+            self.obj_combo.addItems(objs)
+            self.log(f"Loaded {len(objs)} objects from scene.", "blue")
         except Exception as e:
-            self.log(f"Failed to load objects: {str(e)}", "red")
-    
-    def refresh_objects(self):
-        self.log("Refreshing object list...", "blue")
-        self.connect_to_max()
-    
+            self.log(f"Error loading objects: {e}", "red")
+
     def browse_export_path(self):
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Select Export Location",
-            "",
-            "FBX Files (*.fbx)"
-        )
+        path, _ = QFileDialog.getSaveFileName(self, "Save Export", "", "FBX Files (*.fbx)")
         if path:
             self.path_input.setText(path)
-            self.export_btn.setEnabled(True)
-            self.log(f"Export path set: {path}", "blue")
-    
+
     def export_asset(self):
-        object_name = self.obj_combo.currentText()
+        obj_name = self.obj_combo.currentText()
         export_path = self.path_input.text()
-        if not object_name:
-            QMessageBox.warning(self, "Error", "Please select an object")
+        
+        if not obj_name:
+            QMessageBox.warning(self, "Input Error", "Please select an object.")
             return
         if not export_path:
-            QMessageBox.warning(self, "Error", "Please select export path")
+            QMessageBox.warning(self, "Input Error", "Please select an export path.")
             return
-        self.log("=" * 50, "black")
-        self.log(f"Starting export: {object_name}", "blue")
-        self.results_text.clear()
+        
+        self.export_btn.setEnabled(False)
+        self.export_btn.setText("EXPORTING... (PLEASE WAIT)")
+        self.log(f"Starting export for '{obj_name}'...", "blue")
+        
+        self.worker = ExportWorker(self.max_interface, self.exporter, obj_name, export_path)
+        self.worker.finished.connect(self.on_export_done)
+        self.worker.error.connect(self.on_export_fail)
+        self.worker.start()
+
+    def on_export_done(self, stats, json_path):
+        self.export_btn.setEnabled(True)
+        self.export_btn.setText("EXPORT ASSET")
+        
+        self.log("Export Successful!", "green")
+        self.log(f"Polygons: {stats['polygons']}, Vertices: {stats['vertices']}", "black")
+        self.log(f"Metadata saved: {json_path}", "black")
+        
+        self.fbx_input.setText(self.path_input.text())
+        
+        QMessageBox.information(self, "Success", f"Asset exported successfully!\n\nPolygons: {stats['polygons']}")
+
+    def on_export_fail(self, err_msg):
+        self.export_btn.setEnabled(True)
+        self.export_btn.setText("EXPORT ASSET")
+        self.log(f"Export Failed: {err_msg}", "red")
+        QMessageBox.critical(self, "Export Failed", f"An error occurred:\n{err_msg}")
+
+    def generate_script(self):
+        fbx_path = self.fbx_input.text()
+        if not fbx_path or not os.path.exists(fbx_path):
+            QMessageBox.warning(self, "Error", "FBX file not found.")
+            return
+            
         try:
-            self.log("Getting object statistics...", "blue")
-            stats = self.max_interface.get_object_stats(object_name)
-            self.log(f"  Polygons: {stats['polygons']:,}", "black")
-            self.log(f"  Vertices: {stats['vertices']:,}", "black")
-            self.log("Exporting FBX...", "blue")
-            self.max_interface.export_fbx(object_name, export_path)
-            self.log(f"FBX exported: {export_path}", "green")
-            self.log("Creating metadata...", "blue")
-            metadata, json_path = self.exporter.create_metadata(
-                object_name, stats, export_path
-            )
-            self.log(f"Metadata saved: {json_path}", "green")
-            results = f"""
-                EXPORT COMPLETE
-                ================
-
-                Asset: {object_name}
-                FBX: {export_path}
-                JSON: {json_path}
-
-                Geometry:
-                   - Polygons: {stats['polygons']:,}
-                   - Vertices: {stats['vertices']:,}
-                """
-            self.results_text.setText(results)
-            self.log("=" * 50, "black")
-            self.log("EXPORT SUCCESSFUL", "green")
-            QMessageBox.information(
-                self,
-                "Export Complete",
-                f"Asset exported successfully!\n\nFBX: {os.path.basename(export_path)}"
-            )
+            script_path = self.importer.save_import_script(fbx_path)
+            self.log(f"Unreal script generated: {script_path}", "green")
+            QMessageBox.information(self, "Script Generated", 
+                f"Python script created successfully!\n\nLocation: {script_path}\n\nRun this script inside Unreal Engine's Python log.")
         except Exception as e:
-            self.log(f"Export failed: {str(e)}", "red")
-            self.results_text.setText(f"ERROR:\n{str(e)}")
-            QMessageBox.critical(self, "Export Failed", str(e))
-
-
-def main():
-    app = QApplication(sys.argv)
-    app.setStyle('Fusion')
-    window = ExporterUI()
-    window.show()
-    sys.exit(app.exec_())
-
+            self.log(f"Script generation failed: {e}", "red")
 
 if __name__ == '__main__':
-    main()
+    app = QApplication(sys.argv)
+    app.setStyle('Fusion') 
+    window = PipelineUI()
+    window.show()
+    sys.exit(app.exec_())
