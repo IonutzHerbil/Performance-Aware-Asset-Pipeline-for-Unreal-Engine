@@ -1,2 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+
+# 3ds Max / Unreal Temp files
+*.uproject
+Saved/
+Intermediate/
+Build/
+Binaries/
+DerivedDataCache/
+
+# Pipeline Temp Files
+result.txt
+command.ms
+3dsMaxPipeline/
+
+# IDE settings
+.vscode/
+.idea/
 CG2_UnrealProject/
 UnrealScripts/Core/__pycache__/
+ExporterUI/__pycache__/
