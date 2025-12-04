@@ -7,7 +7,6 @@ class MaxScriptInterface:
     def __init__(self):
         self.temp_dir = Path(tempfile.gettempdir()) / "3dsMaxPipeline"
         self.temp_dir.mkdir(parents=True, exist_ok=True)
-
         self.command_file = self.temp_dir / "command.ms"
         self.result_file = self.temp_dir / "result.txt"
         
@@ -33,7 +32,6 @@ class MaxScriptInterface:
                 except:
                     pass
             time.sleep(0.1)
-
         raise Exception(f"3ds Max timed out ({timeout}s). Is monitor.ms running?")
     
     def test_connection(self):
@@ -65,43 +63,36 @@ class MaxScriptInterface:
             local obj = getNodeByName "{object_name}"
             if obj != undefined then (
                 local tmesh = snapshotAsMesh obj
-                local tris = tmesh.numFaces -- numFaces on a mesh is ALWAYS triangles
+                local tris = tmesh.numFaces 
                 local verts = tmesh.numVerts
-                delete tmesh -- Clean up memory
+                delete tmesh 
                 (tris as string) + "," + (verts as string)
             ) else "ERROR_NOT_FOUND"
         )
         """
         response = self.execute(script)
-        
-        print(f"[DEBUG] Stats for '{object_name}': {response}")
-
-        if "ERROR" in response: 
-            raise Exception(f"Object '{object_name}' not found")
+        if "ERROR" in response: raise Exception(f"Object '{object_name}' not found")
         if "," not in response: return {'polygons': 0, 'vertices': 0}
-
         try:
             p, v = response.split(',')
             return {'polygons': int(p), 'vertices': int(v)}
         except ValueError:
             raise Exception(f"Could not parse data: {response}")
 
-    def export_fbx(self, object_name, export_path):
+    def export_fbx(self, object_name, export_path, do_lods=True):
         path = export_path.replace('\\', '\\\\')
+        
+        max_bool = "true" if do_lods else "false"
         
         script = f"""
         (
-            local obj = getNodeByName "{object_name}"
-            if obj != undefined then (
-                select obj
-                FBXExporterSetParam "SmoothingGroups" true
-                FBXExporterSetParam "Triangulate" true
-                FBXExporterSetParam "Preserveedgeorientation" true
-                exportFile "{path}" #noPrompt selectedOnly:true using:FBXEXP
-                "SUCCESS"
-            ) else "ERROR"
+            if pipeline != undefined then (
+                pipeline.runAutomatedExport "{object_name}" "{path}" {max_bool}
+            ) else (
+                "ERROR: AssetPipeline.ms not loaded!"
+            )
         )
         """
-        res = self.execute(script, timeout=60)
+        res = self.execute(script, timeout=120) # Increased timeout for LOD processing
         if "ERROR" in res: raise Exception(res)
         return True
