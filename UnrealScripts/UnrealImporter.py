@@ -2,7 +2,6 @@ import json
 import os
 import sys
 import unreal #type:ignore
-import importlib
 
 core_path = os.path.join(os.path.dirname(__file__), 'Core')
 if core_path not in sys.path:
@@ -10,11 +9,6 @@ if core_path not in sys.path:
 
 import PerformanceMeasurer #type:ignore
 import ValidationEngine #type:ignore
-
-importlib.reload(PerformanceMeasurer)
-importlib.reload(ValidationEngine)
-
-print("=== ASSET PIPELINE IMPORTER ===")
 
 def import_asset_with_metadata(fbx_path):    
     print(f"Looking for: {fbx_path}")
@@ -71,6 +65,3 @@ def import_asset_with_metadata(fbx_path):
             print("VALIDATION PASSED!")
         else:
             print("VALIDATION FAILED!")
-
-test_path = "D:/Puoli/An3 Sem1 - UL/Graphics/exports/test3MaterialAnalizer.fbx"
-import_asset_with_metadata(test_path)
