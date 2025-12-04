@@ -19,3 +19,6 @@ command.ms
 # IDE settings
 .vscode/
 .idea/
+CG2_UnrealProject/
+UnrealScripts/Core/__pycache__/
+ExporterUI/__pycache__/
