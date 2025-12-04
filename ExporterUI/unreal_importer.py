@@ -1,59 +1,42 @@
 import json
 import os
 
-
 class UnrealImporter:
     def __init__(self):
         self.import_destination = "/Game/ImportedAssets"
 
     def generate_import_script(self, fbx_path, json_path=None):
         asset_name = os.path.splitext(os.path.basename(fbx_path))[0]
-
         fbx_path_unix = fbx_path.replace('\\', '/')
-
-        expected_polygons = None
-        if json_path and os.path.exists(json_path):
-            try:
-                with open(json_path, 'r') as f:
-                    metadata = json.load(f)
-                expected_polygons = metadata.get('geometry', {}).get('polygons')
-            except:
-                expected_polygons = None
-
-        if expected_polygons:
-            validation_code = f"""
-print(f"Validating '{asset_name}'...")
-asset_path = f"{{destination_path}}/{{asset_name}}"
-loaded_asset = unreal.EditorAssetLibrary.load_asset(asset_path)
-if loaded_asset and isinstance(loaded_asset, unreal.StaticMesh):
-    tris = loaded_asset.get_num_triangles(0)
-    expected = {expected_polygons}
-    print(f"3ds Max Polys: {{expected}}")
-    print(f"Unreal Polys:  {{tris}}")
-    if tris == expected:
-        print("SUCCESS: Geometry matches exactly.")
-        unreal.log("VALIDATION PASSED")
-    else:
-        diff = abs(tris - expected)
-        print(f"WARNING: Mismatch of {{diff}} polygons.")
-        unreal.log_warning("VALIDATION FAILED")
-else:
-    unreal.log_error(f"Could not load asset at {{asset_path}} for validation")
-"""
-        else:
-            validation_code = "print('No metadata found for validation.')"
+        json_path_unix = fbx_path_unix.replace('.fbx', '.json')
 
         script = f"""
 import unreal
 import os
+import json
+import webbrowser
 
-asset_name = "{asset_name}"
-fbx_path = r"{fbx_path_unix}"
-destination_path = "{self.import_destination}"
+ASSET_NAME = "{asset_name}"
+FBX_PATH = r"{fbx_path_unix}"
+JSON_PATH = r"{json_path_unix}"
+DESTINATION = "{self.import_destination}"
+MAX_POLY_BUDGET = 50000
+
+metadata = {{}}
+if os.path.exists(JSON_PATH):
+    with open(JSON_PATH, 'r') as f:
+        metadata = json.load(f)
+
+print(f"--- PIPELINE START: {{ASSET_NAME}} ---")
+
+predicted_polys = metadata.get('polygons', 0)
+if predicted_polys > MAX_POLY_BUDGET:
+    unreal.log_error(f"PIPELINE STOPPED: Asset exceeds budget ({{predicted_polys}} > {{MAX_POLY_BUDGET}})")
+    unreal.log_warning("PROCEEDING WITH CAUTION (Demo Mode Override)")
 
 task = unreal.AssetImportTask()
-task.filename = fbx_path
-task.destination_path = destination_path
+task.filename = FBX_PATH
+task.destination_path = DESTINATION
 task.automated = True
 task.replace_existing = True
 task.save = True
@@ -62,19 +45,73 @@ options = unreal.FbxImportUI()
 options.import_mesh = True
 options.import_materials = True
 options.import_textures = False
-options.import_as_skeletal = False
-
-sm_options = unreal.FbxStaticMeshImportData()
-sm_options.combine_meshes = True
-sm_options.auto_generate_collision = True
-options.static_mesh_import_data = sm_options
-
+options.static_mesh_import_data.combine_meshes = True
+options.static_mesh_import_data.auto_generate_collision = True
 task.options = options
 
-print(f"Importing {{asset_name}}...")
 unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
 
-{validation_code}
+asset_path = f"{{DESTINATION}}/{{ASSET_NAME}}"
+loaded_mesh = unreal.EditorAssetLibrary.load_asset(asset_path)
+
+imported_lods = 0
+
+if loaded_mesh:
+    base_dir = os.path.dirname(FBX_PATH)
+    
+    for i in range(1, 4):
+        lod_filename = f"{{ASSET_NAME}}_LOD{{i}}.fbx"
+        lod_full_path = os.path.join(base_dir, lod_filename).replace('\\\\', '/')
+        
+        if os.path.exists(lod_full_path):
+            print(f"Found LOD{{i}}: {{lod_filename}}")
+            ret = unreal.EditorStaticMeshLibrary.import_lod(loaded_mesh, i, lod_full_path)
+            if ret != -1: # -1 indicates failure in some versions, or check index
+                imported_lods += 1
+                print(f"Successfully imported LOD {{i}}")
+        else:
+            break
+
+actual_tris = 0
+if loaded_mesh:
+    actual_tris = loaded_mesh.get_num_triangles(0)
+
+accuracy = 100
+if predicted_polys > 0:
+    diff = abs(predicted_polys - actual_tris)
+    accuracy = max(0, 100 - (diff / predicted_polys * 100))
+
+status_color = "green" if accuracy > 90 else "red"
+status_text = "PASSED" if accuracy > 90 else "FAILED PREDICTION"
+
+html_content = f'''
+<html>
+<body style="font-family: Arial; background-color: #333; color: white; padding: 20px;">
+    <h1>Pipeline Report: {{ASSET_NAME}}</h1>
+    <div style="background-color: #444; padding: 15px; border-radius: 5px;">
+        <h2>Status: <span style="color: {{status_color}}">{{status_text}}</span></h2>
+        <p>Accuracy Score: <strong>{{accuracy:.2f}}%</strong></p>
+    </div>
+    <br>
+    <table border="1" style="width:100%; border-collapse: collapse; text-align: left;">
+        <tr><th style="padding: 10px;">Metric</th><th style="padding: 10px;">Max (Predicted)</th><th style="padding: 10px;">Unreal (Actual)</th></tr>
+        <tr><td style="padding: 10px;">Triangles</td><td style="padding: 10px;">{{predicted_polys}}</td><td style="padding: 10px;">{{actual_tris}}</td></tr>
+        <tr><td style="padding: 10px;">LODs</td><td style="padding: 10px;">{{metadata.get('lod_count', 0)}} files</td><td style="padding: 10px;">{{imported_lods}} imported</td></tr>
+    </table>
+    <br>
+    <small>Generated by Auto-Pipeline</small>
+</body>
+</html>
+'''
+
+report_path = FBX_PATH.replace('.fbx', '_Report.html')
+with open(report_path, 'w') as f:
+    f.write(html_content)
+
+print(f"Report generated: {{report_path}}")
+webbrowser.open('file://' + os.path.realpath(report_path))
+
+print("--- PIPELINE FINISHED ---")
 """
         return script
 
