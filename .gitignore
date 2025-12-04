@@ -3,7 +3,6 @@ __pycache__/
 *.pyc
 
 # 3ds Max / Unreal Temp files
-*.max
 *.uproject
 Saved/
 Intermediate/
