@@ -4,33 +4,46 @@ filein "Core/MaterialAnalyzer.ms"
 filein "Core/MeshDecimator.ms"
 
 struct AssetPipeline (
-    
-    fn runAutomatedExport objName exportPath doLODs = (
+    fn runAutomatedExport objName exportPath doLODs doNanite = (
         local obj = getNodeByName objName
         if obj == undefined then return "ERROR_OBJ_NOT_FOUND"
 
-        select obj
+        local exportObj = obj
+        local isTemp = false
         
-        local geoData = geoAnalyzer.analyze obj
+        if classof obj != Editable_Poly then (
+            exportObj = copy obj
+            convertToPoly exportObj
+            exportObj.name = obj.name 
+            isTemp = true
+        )
+
+        select exportObj
+        
+        local geoData = geoAnalyzer.analyze exportObj
         local originalPolys = geoData[1]
         local perfData = perfPredictor.predict geoData
-        local matData = matAnalyzer.analyze obj
+        local matData = matAnalyzer.analyze exportObj
 
         format "\n--- PIPELINE: PROCESSING % ---\n" obj.name
-
         FBXExporterSetParam "AxisConversionMethod" "None" 
         FBXExporterSetParam "UpAxis" "Z" 
         FBXExporterSetParam "SmoothingGroups" true
         FBXExporterSetParam "Triangulate" true
+        FBXExporterSetParam "ASCII" false
+        FBXExporterSetParam "FileVersion" "FBX202000"
         
         exportFile exportPath #noPrompt selectedOnly:true using:FBXEXP
+        
+        if isTemp then delete exportObj
+        
+        select obj
         
         local lodCount = 0
         local lodObjects = #() 
         
         if doLODs then (
             local lodLevels = #(50, 25, 12) 
-            
             for i = 1 to lodLevels.count do (
                 local lodNum = i
                 local targetPercent = lodLevels[i]
@@ -56,12 +69,15 @@ struct AssetPipeline (
         
         local jsonPath = (substituteString exportPath ".fbx" ".json")
         local jsonFile = createFile jsonPath
+        
         format "{" to:jsonFile
         format "\"asset\":\"%\"," obj.name to:jsonFile
         format "\"polygons\":%," originalPolys to:jsonFile
         format "\"vertices\":%," geoData[2] to:jsonFile
         format "\"complexity\":\"%\"," perfData[2] to:jsonFile
-        format "\"lod_count\":%"  lodCount to:jsonFile
+        format "\"lod_count\":%,"  lodCount to:jsonFile
+        format "\"enable_nanite\":%," (if doNanite then "true" else "false") to:jsonFile
+        format "\"texture_issues\":\"%\"" matData[3] to:jsonFile 
         format "}" to:jsonFile
         close jsonFile
         
@@ -73,15 +89,14 @@ struct AssetPipeline (
             messageBox "Select an object!"
             return false
         )
-        
         local obj = selection[1]
         local lodChoice = queryBox "Generate LOD versions?" title:"LOD Generation"
+        local naniteChoice = queryBox "Enable Nanite Support?" title:"Nanite"
         local exportPath = getSaveFileName caption:"Export FBX" types:"FBX Files (*.fbx)|*.fbx"
         
         if exportPath != undefined then (
-            ::pipeline.runAutomatedExport obj.name exportPath lodChoice
+            ::pipeline.runAutomatedExport obj.name exportPath lodChoice naniteChoice
         )
     )
 )
-
 global pipeline = AssetPipeline()

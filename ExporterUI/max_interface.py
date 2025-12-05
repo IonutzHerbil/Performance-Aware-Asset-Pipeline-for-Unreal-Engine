@@ -71,7 +71,9 @@ class MaxScriptInterface:
         )
         """
         response = self.execute(script)
-        if "ERROR" in response: raise Exception(f"Object '{object_name}' not found")
+        
+        if "ERROR" in response: 
+            raise Exception(f"Object '{object_name}' not found")
         if "," not in response: return {'polygons': 0, 'vertices': 0}
         try:
             p, v = response.split(',')
@@ -79,20 +81,22 @@ class MaxScriptInterface:
         except ValueError:
             raise Exception(f"Could not parse data: {response}")
 
-    def export_fbx(self, object_name, export_path, do_lods=True):
+    def export_fbx(self, object_name, export_path, do_lods=True, do_nanite=False):
         path = export_path.replace('\\', '\\\\')
         
-        max_bool = "true" if do_lods else "false"
+        max_lod = "true" if do_lods else "false"
+        max_nanite = "true" if do_nanite else "false"
         
         script = f"""
         (
             if pipeline != undefined then (
-                pipeline.runAutomatedExport "{object_name}" "{path}" {max_bool}
+                -- We now pass 4 arguments to MaxScript
+                pipeline.runAutomatedExport "{object_name}" "{path}" {max_lod} {max_nanite}
             ) else (
                 "ERROR: AssetPipeline.ms not loaded!"
             )
         )
         """
-        res = self.execute(script, timeout=120) # Increased timeout for LOD processing
+        res = self.execute(script, timeout=120)
         if "ERROR" in res: raise Exception(res)
         return True

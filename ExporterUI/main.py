@@ -3,7 +3,7 @@ import os
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QLabel, QPushButton, QComboBox, 
                              QLineEdit, QTextEdit, QFileDialog, QMessageBox,
-                             QGroupBox, QTabWidget, QCheckBox) # Added QCheckBox
+                             QGroupBox, QTabWidget, QCheckBox)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 
@@ -16,18 +16,20 @@ class ExportWorker(QThread):
     finished = pyqtSignal(object, str) 
     error = pyqtSignal(str)           
 
-    def __init__(self, interface, exporter, obj_name, path, do_lods):
+    def __init__(self, interface, exporter, obj_name, path, do_lods, do_nanite):
         super().__init__()
         self.interface = interface
         self.exporter = exporter
         self.obj_name = obj_name
         self.path = path
-        self.do_lods = do_lods 
+        self.do_lods = do_lods
+        self.do_nanite = do_nanite
+
     def run(self):
         try:
             stats = self.interface.get_object_stats(self.obj_name)
             
-            self.interface.export_fbx(self.obj_name, self.path, self.do_lods)
+            self.interface.export_fbx(self.obj_name, self.path, self.do_lods, self.do_nanite)
             
             json_path = self.path.replace('.fbx', '.json')
             
@@ -93,8 +95,7 @@ class PipelineUI(QMainWindow):
         layout.addWidget(sel_group)
         
         path_group = QGroupBox("2. Export Settings")
-        path_layout = QVBoxLayout() # Changed to Vertical to stack Checkbox
-        
+        path_layout = QVBoxLayout()
         file_layout = QHBoxLayout()
         self.path_input = QLineEdit()
         self.path_input.setPlaceholderText("Select where to save the FBX...")
@@ -106,9 +107,15 @@ class PipelineUI(QMainWindow):
         self.lod_checkbox = QCheckBox("Auto-Generate LODs (Levels of Detail)")
         self.lod_checkbox.setChecked(True)
         self.lod_checkbox.setStyleSheet("font-weight: bold; color: #0078d4;")
-        
+        self.lod_checkbox.setToolTip("Generates 50%, 25%, and 12% reduction versions.")
+        self.nanite_checkbox = QCheckBox("Enable Nanite Support (UE5)")
+        self.nanite_checkbox.setChecked(False)
+        self.nanite_checkbox.setStyleSheet("font-weight: bold; color: #e83e8c;")
+        self.nanite_checkbox.setToolTip("Enables Virtualized Geometry. Note: Nanite meshes typically do not require standard LODs.")
+
         path_layout.addLayout(file_layout)
         path_layout.addWidget(self.lod_checkbox)
+        path_layout.addWidget(self.nanite_checkbox)
         path_group.setLayout(path_layout)
         layout.addWidget(path_group)
         
@@ -182,7 +189,8 @@ class PipelineUI(QMainWindow):
     def export_asset(self):
         obj_name = self.obj_combo.currentText()
         export_path = self.path_input.text()
-        do_lods = self.lod_checkbox.isChecked() # Get Checkbox State
+        do_lods = self.lod_checkbox.isChecked()
+        do_nanite = self.nanite_checkbox.isChecked()
         
         if not obj_name:
             QMessageBox.warning(self, "Input Error", "Please select an object.")
@@ -192,10 +200,10 @@ class PipelineUI(QMainWindow):
             return
         
         self.export_btn.setEnabled(False)
-        self.export_btn.setText("EXPORTING... (Processing LODs...)")
+        self.export_btn.setText("EXPORTING... (Processing...)")
         self.log(f"Starting export for '{obj_name}'...", "blue")
         
-        self.worker = ExportWorker(self.max_interface, self.exporter, obj_name, export_path, do_lods)
+        self.worker = ExportWorker(self.max_interface, self.exporter, obj_name, export_path, do_lods, do_nanite)
         self.worker.finished.connect(self.on_export_done)
         self.worker.error.connect(self.on_export_fail)
         self.worker.start()
