@@ -1,15 +1,26 @@
 struct MeshDecimator (
     fn generateLOD obj targetPercent = (
         try (
+            if classof obj != Editable_Poly then convertToPoly obj
+            
             addModifier obj (ProOptimizer())
             local proOpt = obj.modifiers[#ProOptimizer]
-            proOpt.Calculate = true
-            proOpt.KeepUV = true
-            proOpt.KeepNormals = true
+            
+            proOpt.KeepTextures = true  
+            proOpt.KeepVC = false      
+            proOpt.KeepNormals = false  
+            
+            select obj
+            proOpt.Calculate = true 
+            
             proOpt.VertexPercent = targetPercent
-            return true
+            
+            convertToPoly obj 
+            
+            return obj.numFaces
         ) catch (
-            return false
+            format "Decimator Error: %\n" (getCurrentException())
+            return 0
         )
     )
 )

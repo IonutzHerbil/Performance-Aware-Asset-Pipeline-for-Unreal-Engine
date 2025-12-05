@@ -5,13 +5,16 @@ class Exporter:
         polygons = stats['polygons']
         vertices = stats['vertices']
 
+        complexity = "Low"
+        if polygons > 10000: complexity = "Medium"
+        if polygons > 50000: complexity = "High"
+
         metadata = {
             'asset_name': object_name,
             'export_path': export_path,
-            'geometry': {
-                'polygons': polygons, 
-                'vertices': vertices
-            },
+            'polygons': polygons, 
+            'vertices': vertices,
+            'complexity': complexity
         }
 
         json_path = export_path.replace('.fbx', '.json')
